@@ -1,0 +1,172 @@
+import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+const SavingsProjection = dynamic(() => import("../components/SavingsProjection"), { ssr: false });
+import Avatar from "@/components/Avatar";
+import useLocalStorage from "@/utils/useLocalStorage";
+
+export default function Finance() {
+  const [profiles] = useState({
+    ryan: { name: "Ryan Galea" },
+    steff: { name: "Steff" }
+  });
+
+  const defaultForm = {
+    ryanIncome: 0,
+    steffIncome: 0,
+    monthlyBudget: 0,     // Monthly Expense account
+    expensesTopUp: 0,     // Expenses account (fixed top-up)
+    savingsRate: 20,      // Savings (% of total income)
+    splitMethod: "equal"  // 'equal' | 'proportional'
+  };
+
+  // Persisted copy
+  const [saved, setSaved] = useLocalStorage("finance-form", defaultForm);
+  // Editable draft
+  const [form, setForm] = useState(saved || defaultForm);
+  const [savedMsg, setSavedMsg] = useState("");
+
+  const onChange = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const { ryanIncome, steffIncome, monthlyBudget, expensesTopUp, savingsRate, splitMethod } = form;
+
+  const calc = useMemo(() => {
+    const r = Number(ryanIncome) || 0;
+    const s = Number(steffIncome) || 0;
+    const totalIncome = r + s;
+
+    const targetMonthly  = Math.max(0, Number(monthlyBudget) || 0);
+    const targetExpenses = Math.max(0, Number(expensesTopUp) || 0);
+    const targetSavings  = Math.max(0, Number(savingsRate) || 0) / 100 * totalIncome;
+
+    const split = (amount) => {
+      if (amount <= 0) return { ryan: 0, steff: 0 };
+      if (splitMethod === "proportional" && totalIncome > 0) {
+        const rs = r / totalIncome, ss = s / totalIncome;
+        return { ryan: amount * rs, steff: amount * ss };
+        }
+      return { ryan: amount / 2, steff: amount / 2 };
+    };
+
+    const monthly  = split(targetMonthly);
+    const expenses = split(targetExpenses);
+    const savings  = split(targetSavings);
+
+    const remRyan  = r - (monthly.ryan + expenses.ryan + savings.ryan);
+    const remSteff = s - (monthly.steff + expenses.steff + savings.steff);
+
+    return {
+      totalIncome, targetMonthly, targetExpenses, targetSavings,
+      monthly, expenses, savings, remRyan, remSteff
+    };
+  }, [ryanIncome, steffIncome, monthlyBudget, expensesTopUp, savingsRate, splitMethod]);
+
+  const fmt = (x) => (Number.isFinite(x) ? x.toFixed(2) : "0.00");
+
+  const save = () => { setSaved(form); setSavedMsg("Saved ✔"); setTimeout(()=>setSavedMsg(""), 1200); };
+  const load = () => { setForm(saved || defaultForm); setSavedMsg("Loaded"); setTimeout(()=>setSavedMsg(""), 1200); };
+
+  return (
+    <>
+      <h1>Budget & Savings Planner</h1>
+
+      <div className="card">
+        <div className="row">
+          <div>
+            <label><Avatar name={profiles.ryan.name} /> {profiles.ryan.name} income</label>
+            <div className="space" />
+            <input className="input" type="number" value={ryanIncome}
+                   onChange={e => onChange("ryanIncome", Number(e.target.value))} />
+          </div>
+          <div>
+            <label><Avatar name={profiles.steff.name} /> {profiles.steff.name} income</label>
+            <div className="space" />
+            <input className="input" type="number" value={steffIncome}
+                   onChange={e => onChange("steffIncome", Number(e.target.value))} />
+          </div>
+        </div>
+
+        <div className="row" style={{marginTop:12}}>
+          <div>
+            <label>Monthly expense budget (Monthly Expense account)</label>
+            <div className="space" />
+            <input className="input" type="number" value={monthlyBudget}
+                   onChange={e => onChange("monthlyBudget", Number(e.target.value))} />
+          </div>
+          <div>
+            <label>Expenses account top-up (fixed amount)</label>
+            <div className="space" />
+            <input className="input" type="number" value={expensesTopUp}
+                   onChange={e => onChange("expensesTopUp", Number(e.target.value))} />
+          </div>
+        </div>
+
+        <div className="row" style={{marginTop:12}}>
+          <div>
+            <label>Savings goal (% of total income → Savings)</label>
+            <div className="space" />
+            <input className="input" type="number" value={savingsRate}
+                   onChange={e => onChange("savingsRate", Number(e.target.value))} />
+          </div>
+          <div>
+            <label>Split method</label>
+            <div className="space" />
+            <select className="select" value={splitMethod}
+                    onChange={e => onChange("splitMethod", e.target.value)}>
+              <option value="equal">Equal 50/50</option>
+              <option value="proportional">Proportional to income</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="buttons" style={{marginTop:12}}>
+          <button className="button" onClick={save}>Save</button>
+          <button className="button secondary" onClick={load}>Load saved</button>
+          {savedMsg && <span className="muted" style={{alignSelf:'center'}}>{savedMsg}</span>}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Recommended Contributions</h3>
+        <p className="muted">Monthly Expense + Expenses (buffer) + Savings are separated. Remainder stays personal.</p>
+
+        <div className="row" style={{marginTop:12}}>
+          <div>
+            <strong>Monthly Expense account</strong>
+            <div className="space" />
+            <p><Avatar name={profiles.ryan.name} /> {profiles.ryan.name}: € {fmt(calc.monthly.ryan)}</p>
+            <p><Avatar name={profiles.steff.name} /> {profiles.steff.name}: € {fmt(calc.monthly.steff)}</p>
+            <p className="muted">Target: € {fmt(calc.targetMonthly)} (total)</p>
+          </div>
+
+          <div>
+            <strong>Expenses account</strong>
+            <div className="space" />
+            <p><Avatar name={profiles.ryan.name} /> {profiles.ryan.name}: € {fmt(calc.expenses.ryan)}</p>
+            <p><Avatar name={profiles.steff.name} /> {profiles.steff.name}: € {fmt(calc.expenses.steff)}</p>
+            <p className="muted">Target: € {fmt(calc.targetExpenses)} (total)</p>
+          </div>
+        </div>
+
+        <div className="row" style={{marginTop:12}}>
+          <div>
+            <strong>Savings</strong>
+            <div className="space" />
+            <p><Avatar name={profiles.ryan.name} /> {profiles.ryan.name}: € {fmt(calc.savings.ryan)}</p>
+            <p><Avatar name={profiles.steff.name} /> {profiles.steff.name}: € {fmt(calc.savings.steff)}</p>
+            <p className="muted">Target: € {fmt(calc.targetSavings)} (total)</p>
+          </div>
+
+          <div>
+            <strong>What’s left for personal accounts</strong>
+            <div className="space" />
+            <p><Avatar name={profiles.ryan.name} /> {profiles.ryan.name}: <strong>€ {fmt(calc.remRyan)}</strong></p>
+            <p><Avatar name={profiles.steff.name} /> {profiles.steff.name}: <strong>€ {fmt(calc.remSteff)}</strong></p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+<section style={{marginTop:24}}><h2 style={{fontSize:18,fontWeight:700,marginBottom:12}}>Savings Projection</h2><SavingsProjection /></section>
+
