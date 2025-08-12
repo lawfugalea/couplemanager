@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Vercel Prisma Accelerate / pooled URL
+  url       = env("PRISMA_DATABASE_URL")
+  // Direct URL used for migrations
+  directUrl = env("POSTGRES_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String
+  createdAt     DateTime @default(now())
+}
+
+
+model Account {
+  id          String   @id @default(cuid())
+  householdId String
+  name        String
+  kind        String   // "monthly" | "expenses" | "savings" | other
+  balance     Decimal? @db.Decimal(12,2)
+  goal        Decimal? @db.Decimal(12,2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  household   Household @relation(fields: [householdId], references: [id])
+  @@index([householdId])
+}
+
+
+
+model FinanceSettings {
+  id          String   @id @default(cuid())
+  householdId String   @unique
+  currency    String   @default("EUR")
+  // Free-form JSON for now: incomes, split method, targets, etc.
+  config      Json?
+  updatedAt   DateTime @updatedAt
+  household   Household @relation(fields: [householdId], references: [id])
+}
+
+
+
+model ShoppingList {
+  id          String   @id @default(cuid())
+  householdId String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  items       ShoppingItem[]
+  household   Household @relation(fields: [householdId], references: [id])
+  @@unique([householdId, name])
+}
+
+model ShoppingItem {
+  id          String   @id @default(cuid())
+  listId      String
+  name        String
+  qty         String?  // keep as text (e.g., "2", "1kg")
+  category    String?
+  notes       String?
+  checked     Boolean  @default(false)
+  price       Decimal? @db.Decimal(12,2)
+  store       String?
+  updatedAt   DateTime @updatedAt
+  list        ShoppingList @relation(fields: [listId], references: [id])
+  @@index([listId])
+}
+

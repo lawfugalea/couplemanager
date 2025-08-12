@@ -491,3 +491,38 @@ h3{ font-size: 18px; margin: 6px 0 6px; }
   /* give room for tab bar */
   .container{ padding-bottom: 120px; }
 }
+
+/* moneycouple topnav */
+.topnav{
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center;
+  gap: 16px; padding: 10px 16px;
+  background: var(--bg, #0b0f14);
+  border-bottom: 1px solid var(--border, #1f2733);
+}
+.topnav .brand a{
+  font-weight: 700; text-decoration: none;
+  padding: 6px 10px; border-radius: 10px;
+  background: var(--card, #151c26); color: var(--text, #e7edf5);
+}
+.topnav .links{
+  display: flex; gap: 22px; margin-left: 14px; flex: 1;
+}
+.nav-link{
+  text-decoration: none; color: var(--muted, #b8c2cf);
+  padding: 8px 2px; border-bottom: 2px solid transparent;
+}
+.nav-link:hover{ color: var(--text, #e7edf5); }
+.nav-link.active{
+  color: var(--text, #e7edf5);
+  border-bottom-color: var(--accent, #818cf8);
+}
+.topnav .right{ margin-left: auto; }
+.btn{
+  padding: 6px 12px; border-radius: 10px; cursor: pointer;
+  background: var(--card, #151c26); border: 1px solid var(--border, #1f2733);
+  color: var(--text, #e7edf5); font-weight: 600;
+}
+.btn:hover{ filter: brightness(1.06); }
+/* .page wrapper just keeps your spacing consistent */
+.page{ padding: 12px; }

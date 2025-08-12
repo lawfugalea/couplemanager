@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import SavingsProjection from "../components/SavingsProjection";
 export default function ProjectionsPage() {
   return (
@@ -9,3 +10,5 @@ export default function ProjectionsPage() {
     </main>
   );
 }
+
+export const getServerSideProps = requireAuth();

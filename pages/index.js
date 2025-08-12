@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import Link from "next/link";
 
 export default function Home() {
@@ -33,3 +34,5 @@ export default function Home() {
     </>
   );
 }
+
+export const getServerSideProps = requireAuth();

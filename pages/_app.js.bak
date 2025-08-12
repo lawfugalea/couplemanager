@@ -1,11 +1,12 @@
 import '@/styles/globals.css'
 import Layout from '@/components/Layout'
+import LogoutButton from "@/components/LogoutButton";
 
 export default function App({ Component, pageProps }) {
   return (
     <Layout>
       <Component {...pageProps} />
-      
+      <LogoutButton />
     </Layout>
   )
 }

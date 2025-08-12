@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { useState } from "react";
 import Avatar from "@/components/Avatar";
 
@@ -40,3 +41,5 @@ export default function Settings() {
     </>
   );
 }
+
+export const getServerSideProps = requireAuth();

@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { useMemo, useState } from "react";
 import Avatar from "@/components/Avatar";
 import useLocalStorage from "@/utils/useLocalStorage";
@@ -286,3 +287,5 @@ export default function Finance() {
     </>
   );
 }
+
+export const getServerSideProps = requireAuth();

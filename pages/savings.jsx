@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Line } from "@/components/Charts";
 import { themedDefaults, makeAreaGradient } from "@/components/Charts";
@@ -199,3 +200,5 @@ export default function SavingsProjection() {
     </>
   );
 }
+
+export const getServerSideProps = requireAuth();

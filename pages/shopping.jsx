@@ -1,3 +1,4 @@
+import { requireAuth } from "@/lib/auth";
 import { useMemo, useState, useRef } from "react";
 import useLocalStorage from "@/utils/useLocalStorage";
 import useMedia from "@/utils/useMedia";
@@ -367,3 +368,5 @@ export default function Shopping() {
     </div>
   );
 }
+
+export const getServerSideProps = requireAuth();
