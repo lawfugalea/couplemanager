@@ -1,5 +1,4 @@
-export const config = { runtime: 'nodejs' };
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: "nodejs" };
 import axios from "axios";
 import { load } from "cheerio";
 
