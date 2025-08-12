@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
 import { withSessionSsr } from "@/lib/session";
+import { postJSON } from "@/lib/jfetch";
 
 export default function Login() {
   const r = useRouter();
@@ -12,15 +13,9 @@ export default function Login() {
   async function onSubmit(e){
     e.preventDefault(); setErr(""); setLoading(true);
     try{
-      const res = await fetch("/api/auth/login", {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if(!data.ok) throw new Error(data.error || "Login failed");
+      await postJSON("/api/auth/login", { email, password });
       r.push(r.query.next ? String(r.query.next) : "/");
-    }catch(e){ setErr(e.message || "Login failed"); }
-    finally{ setLoading(false); }
+    }catch(e){ setErr(e.message || "Login failed"); } finally { setLoading(false); }
   }
 
   return (
@@ -38,7 +33,7 @@ export default function Login() {
     </div>
   );
 }
-export const getServerSideProps = withSessionSsr(async ({ req }) => {
-  if (req.session.user) return { redirect: { destination: ctx.query.next ? String(ctx.query.next) : "/", permanent: false } };
+export const getServerSideProps = withSessionSsr(async (ctx) => {
+  if (ctx.req.session.user) return { redirect: { destination: ctx.query.next ? String(ctx.query.next) : "/", permanent: false } };
   return { props: {} };
 });
