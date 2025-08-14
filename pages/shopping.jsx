@@ -26,15 +26,13 @@ export default function Shopping() {
 
   // UI toggles
   const [hideChecked, setHideChecked] = useLocalStorage("shopping-hide-checked", false);
-  const [tripMode, setTripMode]       = useLocalStorage("shopping-trip-mode", false);
   const [showPrices, setShowPrices]   = useLocalStorage("shopping-show-prices", false);
 
   // Category/filter
-  const [catOrder] = useLocalStorage("shopping-cats-order", CAT_ORDER_DEFAULT);
   const [filterCat, setFilterCat] = useLocalStorage("shopping-filter-cat", "All");
   const [filterText, setFilterText] = useLocalStorage("shopping-filter-text", "");
 
-  // Add form (also used in sheet)
+  // Add form
   const [text, setText] = useState("");
   const [qty, setQty]   = useState(1);
   const [unit, setUnit] = useState("x");
@@ -43,17 +41,6 @@ export default function Shopping() {
   // Bulk paste
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
-
-  // Price progress + summary
-  const [checking, setChecking]         = useState(false);
-  const [checkMsg, setCheckMsg]         = useState("");
-  const [checkSummary, setCheckSummary] = useLocalStorage("shopping-price-summary", null);
-
-  // Bottom sheet state
-  const sheetRef = useRef(null);
-  const [sheetType, setSheetType] = useState(null); // 'add' | {type:'item', id}
-  function openSheet(payload){ setSheetType(payload); sheetRef.current?.showModal?.(); }
-  function closeSheet(){ sheetRef.current?.close?.(); setSheetType(null); }
 
   function nowIso(){ return new Date().toISOString(); }
   function normalize(s){ return (s||"").trim().toLowerCase(); }
@@ -80,6 +67,7 @@ export default function Shopping() {
     });
     if (rawText === undefined) { setText(""); setQty(1); setUnit("x"); setCat("Produce"); }
   };
+  
   const toggle = (id) => updateCurrent(items => items.map(i => i.id===id ? { ...i, bought: !i.bought } : i));
   const pin    = (id) => updateCurrent(items => items.map(i => i.id===id ? { ...i, pinned: !i.pinned } : i));
   const remove = (id) => updateCurrent(items => items.filter(i => i.id!==id));
@@ -100,7 +88,13 @@ export default function Shopping() {
     const id = (lists[idBase] ? `${idBase}-${Date.now()}` : idBase);
     setLists(p => ({ ...p, [id]: { id, name, items:[] } })); setCurrentId(id);
   };
-  const renameList = () => { const name = prompt("Rename list:", current.name); if(!name) return; setLists(p => ({ ...p, [current.id]: { ...current, name } })); };
+  
+  const renameList = () => { 
+    const name = prompt("Rename list:", current.name); 
+    if(!name) return; 
+    setLists(p => ({ ...p, [current.id]: { ...current, name } })); 
+  };
+  
   const deleteList = () => {
     if(Object.keys(lists).length <= 1) return alert("You need at least one list.");
     if(!confirm(`Delete "${current.name}"?`)) return;
@@ -132,12 +126,11 @@ export default function Shopping() {
         return a.text.localeCompare(b.text);
       });
     }
-    const order = ["All", ...CAT_ORDER_DEFAULT];
     const out = [];
-    (Array.isArray(catOrder)?catOrder:CAT_ORDER_DEFAULT).forEach(c => { if (byCat.has(c)) out.push([c, byCat.get(c)]) });
-    for (const [k, arr] of byCat) { if(!order.includes(k)) out.push([k, arr]); }
+    CAT_ORDER_DEFAULT.forEach(c => { if (byCat.has(c)) out.push([c, byCat.get(c)]) });
+    for (const [k, arr] of byCat) { if(!CAT_ORDER_DEFAULT.includes(k)) out.push([k, arr]); }
     return out;
-  }, [filtered, catOrder]);
+  }, [filtered]);
 
   const count = useMemo(()=>{
     const totalItems = rawItems.length;
@@ -148,223 +141,282 @@ export default function Shopping() {
   const total = useMemo(() =>
     rawItems.reduce((sum,i)=>sum + ((Number(i.price)||0) * (Number(i.qty)||1)), 0), [rawItems]);
 
-  // Price lookups
-  async function findPrice(id){
-    const item = (current.items||[]).find(i=>i.id===id);
-    if(!item) return;
-    try{
-      const q = encodeURIComponent(item.text);
-      const c = encodeURIComponent(item.category||'Other');
-      const resp = await fetch(`/api/smart-find?name=${q}&category=${c}`);
-      const data = await resp.json();
-      if(!data.ok){ setField(id,'priceStatus','error'); setField(id,'lastChecked',nowIso()); alert(data.error||'Search failed'); return; }
-      if(!data.results || !data.results.length){ setField(id,'priceStatus','miss'); setField(id,'lastChecked',nowIso()); return; }
-      const best = data.results[0];
-      updateCurrent(list => list.map(i=>i.id===id?{...i, price:String(best.price), productUrl:best.source, priceStatus:'ok', lastChecked:nowIso()}:i));
-      setTimeout(()=>{ const el=document.getElementById(`it-${id}`); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1100); }},0);
-    }catch(e){ setField(id,'priceStatus','error'); setField(id,'lastChecked',nowIso()); }
-  }
-  async function batchPriceCheck(ids){
-    setChecking(true); setCheckMsg(`Checking 0 / ${ids.length}…`);
-    const summary = { updated:0, notFound:0, failed:0 };
-    for (let i=0;i<ids.length;i++){
-      setCheckMsg(`Checking ${i+1} / ${ids.length}…`);
-      await findPrice(ids[i]);
-      const it = (lists[current.id]?.items||[]).find(x=>x.id===ids[i]);
-      if (it?.priceStatus==='ok') summary.updated++;
-      else if (it?.priceStatus==='miss') summary.notFound++;
-      else if (it?.priceStatus==='error') summary.failed++;
-      await new Promise(r=>setTimeout(r, 1600));
-    }
-    setChecking(false); setCheckMsg(''); setCheckSummary({...summary, at:new Date().toISOString()});
-    alert(`Prices updated: ${summary.updated} ✓, ${summary.notFound} not found, ${summary.failed} errors`);
-  }
-
-  // Action sheet helpers
-  function openAdd(){ openSheet('add'); }
-  function openItemActions(id){ openSheet({type:'item', id}); }
-
-  // --------------------------------------------------------------------------
   return (
-    <div className={tripMode ? "trip" : ""}>
-      <h1>Shopping</h1>
+    <div className="animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold">🛒 Shopping Lists</h1>
+          <p className="text-secondary mt-2">Manage your shopping efficiently with smart lists</p>
+        </div>
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)', minWidth: '300px' }}>
+          <div className="stat-card">
+            <div className="stat-value text-lg">{count.totalItems}</div>
+            <div className="stat-label">Total</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value text-lg">{count.left}</div>
+            <div className="stat-label">Left</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value text-lg">{count.done}</div>
+            <div className="stat-label">Done</div>
+          </div>
+        </div>
+      </div>
 
-      {/* Header / toolbar */}
+      {/* Controls Card */}
+      <div className="card mb-6">
+        <div className="card-header">
+          <h3 className="card-title">List Controls</h3>
+        </div>
+        
+        {/* List Selection */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="form-group">
+            <label className="form-label">Current List</label>
+            <select className="form-select" value={current.id} onChange={e=>setCurrentId(e.target.value)}>
+              {Object.values(lists).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2 items-end">
+            <button className="btn btn-secondary" onClick={createList} title="New list">
+              ➕ New
+            </button>
+            <button className="btn btn-secondary" onClick={renameList} title="Rename">
+              ✏️ Rename
+            </button>
+            <button className="btn btn-secondary" onClick={deleteList} title="Delete">
+              🗑️ Delete
+            </button>
+          </div>
+        </div>
+
+        {/* Add Item Form */}
+        <div className="grid grid-cols-6 gap-4 mb-6">
+          <div className="form-group" style={{ gridColumn: 'span 2' }}>
+            <label className="form-label">Item Name</label>
+            <input 
+              className="form-input" 
+              placeholder="Add an item..." 
+              value={text} 
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => (e.key === 'Enter' ? addItem() : null)} 
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Quantity</label>
+            <input 
+              className="form-input" 
+              type="number" 
+              min="1" 
+              value={qty} 
+              onChange={e => setQty(Number(e.target.value) || 1)} 
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Unit</label>
+            <select className="form-select" value={unit} onChange={e => setUnit(e.target.value)}>
+              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Category</label>
+            <select className="form-select" value={cat} onChange={e => setCat(e.target.value)}>
+              {CAT_ORDER_DEFAULT.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button className="btn btn-primary w-full" onClick={addItem}>
+              ➕ Add Item
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Add Buttons */}
+        <div className="mb-6">
+          <label className="form-label mb-3">Quick Add</label>
+          <div className="flex gap-2 flex-wrap">
+            {QUICK_ADD.map(q => (
+              <button 
+                key={q.t} 
+                className="btn btn-ghost btn-sm" 
+                onClick={() => addItem(q.t, { qty:1, unit:q.u, cat:q.c })}
+              >
+                {q.t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Filters and Actions */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="form-group">
+            <label className="form-label">Filter by text</label>
+            <input 
+              className="form-input" 
+              placeholder="Search items..." 
+              value={filterText} 
+              onChange={e => setFilterText(e.target.value)} 
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Filter by category</label>
+            <select className="form-select" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
+              <option value="All">All Categories</option>
+              {CAT_ORDER_DEFAULT.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2 items-end">
+            <button 
+              className={`btn ${hideChecked ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setHideChecked(v => !v)}
+            >
+              {hideChecked ? '👁️ Show All' : '🙈 Hide Done'}
+            </button>
+            <button 
+              className={`btn ${showPrices ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setShowPrices(v => !v)}
+            >
+              {showPrices ? '💰 Hide Prices' : '💰 Show Prices'}
+            </button>
+          </div>
+          <div className="flex gap-2 items-end">
+            <button className="btn btn-secondary" onClick={clearChecked}>
+              🗑️ Clear Done
+            </button>
+            <button 
+              className="btn btn-ghost" 
+              onClick={() => setBulkOpen(v => !v)}
+            >
+              📋 {bulkOpen ? 'Cancel' : 'Bulk Add'}
+            </button>
+          </div>
+        </div>
+
+        {/* Bulk Add */}
+        {bulkOpen && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <label className="form-label">Paste items (one per line)</label>
+            <textarea 
+              className="form-input mt-2" 
+              rows={5} 
+              placeholder="Milk&#10;Bread&#10;Eggs&#10;..." 
+              value={bulkText} 
+              onChange={e => setBulkText(e.target.value)} 
+            />
+            <div className="flex gap-2 mt-4">
+              <button className="btn btn-primary" onClick={bulkAdd}>
+                ➕ Add All Items
+              </button>
+              <button className="btn btn-secondary" onClick={() => setBulkOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Shopping List */}
       <div className="card">
-        <div className="toolbar compact">
-          <select className="select" value={current.id} onChange={e=>setCurrentId(e.target.value)}>
-            {Object.values(lists).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-          <div className="icons">
-            <button className="icon-btn" title="New list" onClick={createList}>＋</button>
-            <button className="icon-btn" title="Rename" onClick={renameList}>✎</button>
-            <button className="icon-btn" title="Delete" onClick={deleteList}>🗑</button>
-          </div>
-
-          <div style={{gridColumn:"1 / -1", display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
-            <button className="button ghost" onClick={()=>setBulkOpen(v=>!v)}>{bulkOpen ? "Cancel paste" : "Paste"}</button>
-            <button className="button ghost" onClick={()=>setHideChecked(v=>!v)}>{hideChecked ? "Show checked" : "Hide checked"}</button>
-            <button className="button ghost" onClick={()=>setTripMode(v=>!v)}>{tripMode ? "Exit Trip" : "Trip mode"}</button>
-            <button className="button ghost" onClick={()=>setShowPrices(v=>!v)}>{showPrices ? "Hide prices" : "Show prices"}</button>
-            <button className="button ghost" onClick={()=>{
-              const visible = (hideChecked ? (current.items||[]).filter(i=>!i.bought) : (current.items||[]));
-              const toCheck = visible.filter(i=>!i.price).map(i=>i.id);
-              if(!toCheck.length) { alert('No visible items without price.'); return; }
-              batchPriceCheck(toCheck);
-            }}>Check prices</button>
-            <button className="button secondary" onClick={clearChecked}>Clear</button>
-            <span style={{marginLeft:'auto'}} className="count-badge">Total {count.totalItems} • Left {count.left}</span>
-          </div>
-
-          <input className="input" style={{gridColumn:"1 / -1"}} placeholder="Filter items…" value={filterText} onChange={e=>setFilterText(e.target.value)} />
-
-          <div className="seg scroller-x" style={{gridColumn:"1 / -1"}}>
-            {["All", ...CAT_ORDER_DEFAULT].map(c => (
-              <button key={c} className={`segbtn ${filterCat===c ? 'active' : ''}`} onClick={()=>setFilterCat(c)}>{c}</button>
-            ))}
-          </div>
-
-          <div className="scroller-x" style={{gridColumn:"1 / -1"}}>
-            {QUICK_ADD.map(q=>(
-              <div key={q.t} className="chip" onClick={()=>addItem(q.t, { qty:1, unit:q.u, cat:q.c })}><span className="dot" /> {q.t}</div>
-            ))}
-          </div>
-
-          {bulkOpen && (
-            <div style={{gridColumn:"1 / -1"}}>
-              <textarea className="input" rows={5} placeholder={"Paste items, one per line"} value={bulkText} onChange={e=>setBulkText(e.target.value)} />
-              <div className="space" />
-              <button className="button" onClick={bulkAdd}>Add lines</button>
+        <div className="card-header">
+          <h3 className="card-title">{current.name}</h3>
+          {showPrices && (
+            <div className="badge badge-primary">
+              Total: €{total.toFixed(2)}
             </div>
           )}
         </div>
-      </div>
 
-      {/* progress banner */}
-      {checking && (
-        <div className="card">
-          <div className="progress"><span className="spinner"/> <strong>Price check in progress…</strong><span className="muted"> {checkMsg}</span></div>
-        </div>
-      )}
-
-      {/* List groups */}
-      <div className="card">
-        {groups.length === 0 && <p className="muted">No items yet. Tap “＋” to add milk, eggs, nappies…</p>}
-        {groups.map(([category, arr])=>{
-          const checkedCount = arr.filter(i=>i.bought).length;
-          return (
-            <section key={category}>
-              <div className="cat-header sticky">
-                <strong>{category}</strong>
-                <div className="item-actions">
-                  <span className="count-badge">{arr.length} items{checkedCount ? ` – ${checkedCount} done` : ""}</span>
-                </div>
-              </div>
-
-              <ul className="list">
-                {arr.map(item => (
-                  <li key={item.id} id={`it-${item.id}`} className="list-item item-row">
-                    <label className="checkbox-line">
-                      <input type="checkbox" checked={!!item.bought} onChange={()=>toggle(item.id)} />
-                    </label>
-
-                    <div className="item-name" style={{textDecoration: item.bought ? 'line-through' : 'none'}}>
-                      {item.text}{item.qty>1?` × ${item.qty}`:""}{item.unit && item.unit!=="x" ? ` (${item.unit})` : ""}
-                      {item.price ? <span className="badge-euro">€ {Number(item.price||0).toFixed(2)}</span> : null}
-                    </div>
-
-                    <div className="qty-step">
-                      <button className="button secondary" onClick={()=>setField(item.id, "qty", Math.max(1,(item.qty||1)-1))}>−</button>
-                      <button className="button secondary" onClick={()=>setField(item.id, "qty", (item.qty||1)+1)}>＋</button>
-                    </div>
-
-                    <button className="icon-btn ghost" aria-label="More" onClick={()=>openItemActions(item.id)}>⋯</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })}
-      </div>
-
-      {/* Summary / totals */}
-      {checkSummary && (
-        <div className="card">
-          <h3>Last Price Check</h3>
-          <p className="muted small">{new Date(checkSummary.at).toLocaleString()}</p>
-          <div className="kpi">
-            <div><strong>Updated</strong><div className="space"/> {checkSummary.updated}</div>
-            <div><strong>Not found</strong><div className="space"/> {checkSummary.notFound}</div>
-            <div><strong>Failed</strong><div className="space"/> {checkSummary.failed}</div>
+        {groups.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🛒</div>
+            <h3 className="text-xl font-semibold mb-2">No items yet</h3>
+            <p className="text-secondary">Add some items to get started with your shopping list</p>
           </div>
-        </div>
-      )}
-      {showPrices && (
-        <div className="card">
-          <div className="pill green">Total (priced items): € {total.toFixed(2)}</div>
-          <p className="muted small">Prices are optional and stored locally on this device only.</p>
-        </div>
-      )}
-
-      {/* FAB */}
-      {isPhone && <button className="fab" onClick={openAdd} title="Add item">+</button>}
-
-      {/* Bottom sheet */}
-      <dialog ref={sheetRef} className="sheet" onClose={closeSheet}>
-        <div className="panel">
-          <div className="grab" />
-          {sheetType==='add' && (
-            <>
-              <h3>Add item</h3>
-              <div className="space" />
-              <div className="row">
-                <input className="input" placeholder="Item name…" value={text} onChange={e=>setText(e.target.value)}
-                       onKeyDown={e=>{ if(e.key==='Enter'){ addItem(); closeSheet(); }}} />
-                <input className="input sm" type="number" min="1" value={qty} onChange={e=>setQty(Number(e.target.value)||1)} />
-                <select className="select sm" value={unit} onChange={e=>setUnit(e.target.value)}>{UNITS.map(u=> <option key={u} value={u}>{u}</option>)}</select>
-                <select className="select sm" value={cat} onChange={e=>setCat(e.target.value)}>{CAT_ORDER_DEFAULT.map(c=> <option key={c} value={c}>{c}</option>)}</select>
-              </div>
-              <div className="chips scroller-x" style={{marginTop:10}}>
-                {QUICK_ADD.map(q=>(
-                  <div key={q.t} className="chip" onClick={()=>{ addItem(q.t,{qty:1,unit:q.u,cat:q.c}); }}>
-                    <span className="dot" /> {q.t}
-                  </div>
-                ))}
-              </div>
-              <div className="space" />
-              <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
-                <button className="button secondary" onClick={closeSheet}>Cancel</button>
-                <button className="button" onClick={()=>{ addItem(); closeSheet(); }}>Add</button>
-              </div>
-            </>
-          )}
-
-          {sheetType && sheetType.type==='item' && (()=> {
-            const it = (current.items||[]).find(i=>i.id===sheetType.id);
-            if(!it) return <p className="muted">Item not found.</p>;
+        ) : (
+          groups.map(([category, items]) => {
+            const checkedCount = items.filter(i => i.bought).length;
             return (
-              <>
-                <h3>{it.text}</h3>
-                <div className="space" />
-                <div className="row">
-                  <input className="input sm" type="number" step="0.01" placeholder="€"
-                         value={it.price} onChange={e=>setField(it.id,'price',e.target.value)} />
-                  <button className="button secondary" onClick={()=>findPrice(it.id)}>Find price</button>
-                  <button className="button secondary" onClick={()=>pin(it.id)}>{it.pinned ? "Unpin" : "Pin"}</button>
-                  <button className="button secondary" style={{color:'#ef4444'}} onClick={()=>{ remove(it.id); closeSheet(); }}>Delete</button>
+              <div key={category} className="mb-8">
+                <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200">
+                  <h4 className="text-lg font-semibold">{category}</h4>
+                  <div className="flex gap-2">
+                    <span className="badge badge-primary">
+                      {items.length} items
+                    </span>
+                    {checkedCount > 0 && (
+                      <span className="badge badge-success">
+                        {checkedCount} done
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {it.priceStatus && (
-                  <p className="muted small">Last check: {new Date(it.lastChecked||Date.now()).toLocaleString()} — {it.priceStatus}</p>
-                )}
-                <div className="space" />
-                <div style={{display:'flex', justifyContent:'flex-end', gap:8}}>
-                  <button className="button secondary" onClick={closeSheet}>Close</button>
+
+                <div className="space-y-3">
+                  {items.map(item => (
+                    <div 
+                      key={item.id} 
+                      className={`shopping-item ${item.bought ? 'checked' : ''}`}
+                    >
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={!!item.bought} 
+                          onChange={() => toggle(item.id)}
+                          className="w-5 h-5 text-primary-600 rounded"
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium">
+                            {item.text}
+                            {item.qty > 1 && <span className="text-secondary"> × {item.qty}</span>}
+                            {item.unit && item.unit !== "x" && <span className="text-secondary"> ({item.unit})</span>}
+                            {item.pinned && <span className="ml-2">📌</span>}
+                          </div>
+                          {showPrices && item.price && (
+                            <div className="text-sm text-secondary">
+                              €{Number(item.price).toFixed(2)} each
+                            </div>
+                          )}
+                        </div>
+                      </label>
+
+                      <div className="flex gap-2">
+                        <button 
+                          className="btn btn-ghost btn-sm" 
+                          onClick={() => setField(item.id, "qty", Math.max(1, (item.qty || 1) - 1))}
+                        >
+                          −
+                        </button>
+                        <button 
+                          className="btn btn-ghost btn-sm" 
+                          onClick={() => setField(item.id, "qty", (item.qty || 1) + 1)}
+                        >
+                          +
+                        </button>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          onClick={() => pin(item.id)}
+                          title={item.pinned ? "Unpin" : "Pin"}
+                        >
+                          {item.pinned ? "📌" : "📍"}
+                        </button>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          onClick={() => remove(item.id)}
+                          title="Delete"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </>
+              </div>
             );
-          })()}
-        </div>
-      </dialog>
+          })
+        )}
+      </div>
     </div>
   );
 }

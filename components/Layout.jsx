@@ -1,49 +1,69 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { useState } from "react";
 
 export default function Layout({ children }) {
-  const r = useRouter();
-  const hideNav = r.pathname === "/login" || r.pathname === "/signup";
+  const { pathname } = useRouter();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  const hideNav = pathname === "/login" || pathname === "/signup";
 
-  const NavLink = ({ href, children }) => (
+  const NavLink = ({ href, children, icon }) => (
     <Link
       href={href}
-      className={
-        "nav-link" + (r.pathname === href || r.pathname.startsWith(href + "/") ? " active" : "")
-      }
+      className={`nav-link ${pathname === href || pathname.startsWith(href + "/") ? "active" : ""}`}
     >
+      {icon && <span className="nav-icon">{icon}</span>}
       {children}
     </Link>
   );
 
   async function onLogout() {
-    try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
-    r.push("/login");
+    try { 
+      await fetch("/api/auth/logout", { method: "POST" }); 
+    } catch {}
+    window.location.href = "/login";
+  }
+
+  if (hideNav) {
+    return (
+      <div className="app-container">
+        <main className="main-content">
+          {children}
+        </main>
+      </div>
+    );
   }
 
   return (
-    <>
-      {!hideNav && (
-        <nav className="topnav">
-          <div className="brand">
-            <Link href="/">MoneyCouple</Link>
-          </div>
+    <div className="app-container">
+      <nav className="nav-header">
+        <div className="nav-container">
+          <Link href="/" className="nav-brand">
+            💰 MoneyCouple
+          </Link>
 
-          <div className="links">
-            <NavLink href="/shopping">Shopping</NavLink>
-            <NavLink href="/finance">Budget</NavLink>
-            <NavLink href="/projections">Projections</NavLink>
-            <NavLink href="/settings">Settings</NavLink>
-            <NavLink href="/household">Household</NavLink>
+          <div className="nav-links">
+            <NavLink href="/shopping" icon="🛒">Shopping</NavLink>
+            <NavLink href="/finance" icon="📊">Budget</NavLink>
+            <NavLink href="/savings" icon="📈">Projections</NavLink>
+            <NavLink href="/settings" icon="⚙️">Settings</NavLink>
+            <NavLink href="/household" icon="🏠">Household</NavLink>
+            
+            <button 
+              onClick={onLogout} 
+              className="btn btn-secondary btn-sm"
+              aria-label="Logout"
+            >
+              Logout
+            </button>
           </div>
+        </div>
+      </nav>
 
-          <div className="right">
-            <button className="btn" onClick={onLogout} aria-label="Logout">Logout</button>
-          </div>
-        </nav>
-      )}
-
-      <main className="page">{children}</main>
-    </>
+      <main className="main-content animate-fade-in">
+        {children}
+      </main>
+    </div>
   );
 }
